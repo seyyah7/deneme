@@ -5,10 +5,16 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -36,8 +42,11 @@ import androidx.navigation.compose.rememberNavController
 import com.example.deneme.ui.screens.AddProblemScreen
 import com.example.deneme.ui.screens.HomeScreen
 import com.example.deneme.ui.screens.LoginScreen
+import com.example.deneme.ui.screens.MessagesScreen
+import com.example.deneme.ui.screens.NotificationsScreen
 import com.example.deneme.ui.screens.ProblemDetailScreen
 import com.example.deneme.ui.screens.ProfileScreen
+import com.example.deneme.ui.screens.SearchScreen
 import com.example.deneme.ui.screens.SignUpScreen
 import com.example.deneme.viewmodel.AuthViewModel
 
@@ -47,6 +56,9 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Profile : Screen("profile")
     object AddProblem : Screen("add_problem")
+    object Search : Screen("search")
+    object Messages : Screen("messages")
+    object Notifications : Screen("notifications")
     data class ProblemDetail(val id: String = "{problemId}") : Screen("problem_detail/$id") {
         fun createRoute(id: String) = "problem_detail/$id"
     }
@@ -63,6 +75,27 @@ sealed class BottomNavItem(
         title = "Ana Sayfa",
         selectedIcon = Icons.Filled.Home,
         unselectedIcon = Icons.Outlined.Home
+    )
+    
+    object Search : BottomNavItem(
+        route = Screen.Search.route,
+        title = "Arama",
+        selectedIcon = Icons.Filled.Search,
+        unselectedIcon = Icons.Outlined.Search
+    )
+    
+    object Messages : BottomNavItem(
+        route = Screen.Messages.route,
+        title = "Mesajlar",
+        selectedIcon = Icons.Filled.Email,
+        unselectedIcon = Icons.Outlined.Email
+    )
+    
+    object Notifications : BottomNavItem(
+        route = Screen.Notifications.route,
+        title = "Bildirimler",
+        selectedIcon = Icons.Filled.Notifications,
+        unselectedIcon = Icons.Outlined.Notifications
     )
     
     object Profile : BottomNavItem(
@@ -174,24 +207,70 @@ fun AppNavigation() {
             }
         }
         
+        // Arama ekranı
+        composable(Screen.Search.route) {
+            MainScreenContainer(
+                navController = navController,
+                currentRoute = Screen.Search.route,
+                showFab = false
+            ) {
+                SearchScreen(
+                    onNavigateToProblemDetail = { problemId ->
+                        Log.d("Navigation", "Navigating to ProblemDetail screen from Search: $problemId")
+                        navController.navigate(Screen.ProblemDetail().createRoute(problemId))
+                    }
+                )
+            }
+        }
+        
+        // Mesajlar ekranı
+        composable(Screen.Messages.route) {
+            MainScreenContainer(
+                navController = navController,
+                currentRoute = Screen.Messages.route,
+                showFab = false
+            ) {
+                MessagesScreen()
+            }
+        }
+        
+        // Bildirimler ekranı
+        composable(Screen.Notifications.route) {
+            MainScreenContainer(
+                navController = navController,
+                currentRoute = Screen.Notifications.route,
+                showFab = false
+            ) {
+                NotificationsScreen()
+            }
+        }
+        
         composable(Screen.AddProblem.route) {
             AddProblemScreen(
                 onNavigateBack = {
                     Log.d("Navigation", "Navigating back from AddProblem")
-                    navController.popBackStack()
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
                 }
             )
         }
         
         composable(Screen.ProblemDetail().route) { backStackEntry ->
             val problemId = backStackEntry.arguments?.getString("problemId") ?: ""
-            ProblemDetailScreen(
-                problemId = problemId,
-                onNavigateBack = {
-                    Log.d("Navigation", "Navigating back from ProblemDetail")
-                    navController.popBackStack()
-                }
-            )
+            MainScreenContainer(
+                navController = navController,
+                currentRoute = "",  // Boş string vermemiz alt navigasyon çubuğunda hiçbir item'ın seçili olmamasını sağlar
+                showFab = false
+            ) {
+                ProblemDetailScreen(
+                    problemId = problemId,
+                    onNavigateBack = {
+                        Log.d("Navigation", "Navigating back from ProblemDetail")
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
     }
 }
@@ -227,6 +306,9 @@ fun MainScreenContainer(
 fun BottomNavBar(navController: NavController, currentRoute: String) {
     val items = listOf(
         BottomNavItem.Home,
+        BottomNavItem.Search,
+        BottomNavItem.Messages,
+        BottomNavItem.Notifications,
         BottomNavItem.Profile
     )
     

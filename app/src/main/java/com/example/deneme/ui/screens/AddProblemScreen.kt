@@ -1,9 +1,11 @@
 package com.example.deneme.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -11,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.deneme.model.ProblemCategory
 import com.example.deneme.viewmodel.ProblemViewModel
 import kotlinx.coroutines.flow.collectLatest
 
@@ -22,7 +25,9 @@ fun AddProblemScreen(
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(ProblemCategory.SUGGESTION) }
     var isLoading by remember { mutableStateOf(false) }
+    var showCategoryDropdown by remember { mutableStateOf(false) }
     var snackbarHostState = remember { SnackbarHostState() }
     
     LaunchedEffect(Unit) {
@@ -33,6 +38,7 @@ fun AddProblemScreen(
                 }
                 is ProblemViewModel.OperationState.Success -> {
                     snackbarHostState.showSnackbar(state.message)
+                    Log.d("AddProblemScreen", "Soru başarıyla eklendi, ekrandan çıkılıyor")
                     onNavigateBack()
                 }
                 is ProblemViewModel.OperationState.Error -> {
@@ -82,13 +88,49 @@ fun AddProblemScreen(
                 singleLine = false
             )
             
+            // Kategori Seçimi
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = selectedCategory.displayName,
+                    onValueChange = { },
+                    label = { Text("Kategori") },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showCategoryDropdown = true }) {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Kategori Seç")
+                        }
+                    }
+                )
+                
+                DropdownMenu(
+                    expanded = showCategoryDropdown,
+                    onDismissRequest = { showCategoryDropdown = false },
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                ) {
+                    ProblemCategory.values().forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.displayName) },
+                            onClick = {
+                                selectedCategory = category
+                                showCategoryDropdown = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
             Button(
                 onClick = {
                     isLoading = true
-                    viewModel.addProblem(title, description)
+                    viewModel.addProblemWithCategory(title, description, selectedCategory.name)
                 },
                 modifier = Modifier.align(Alignment.End),
-                enabled = !isLoading && title.isNotBlank() && description.isNotBlank()
+                enabled = !isLoading && 
+                         title.isNotBlank() && 
+                         description.isNotBlank()
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
