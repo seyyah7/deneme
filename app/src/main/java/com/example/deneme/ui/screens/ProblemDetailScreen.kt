@@ -2,6 +2,7 @@ package com.example.deneme.ui.screens
 
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -172,6 +173,10 @@ fun ProblemDetailScreen(
                             isOwner = currentUser?.id == problem.userId,
                             onMarkAsSolved = {
                                 viewModel.toggleProblemSolvedStatus(problem.id)
+                            },
+                            onDeleteProblem = {
+                                viewModel.deleteProblem(problem.id)
+                                onNavigateBack()
                             }
                         )
                     }
@@ -206,8 +211,12 @@ fun ProblemDetailScreen(
                                     CommentItem(
                                         comment = comment,
                                         isOwner = currentUser?.id == problem.userId,
+                                        isCommentOwner = currentUser?.id == comment.userId,
                                         onMarkAsAccepted = {
                                             viewModel.markCommentAsAccepted(comment.id, problemId)
+                                        },
+                                        onDeleteComment = {
+                                            viewModel.deleteComment(comment.id, problemId)
                                         }
                                     )
                                 }
@@ -246,11 +255,18 @@ fun ProblemDetailScreen(
 fun ProblemHeader(
     problem: Problem,
     isOwner: Boolean,
-    onMarkAsSolved: () -> Unit
+    onMarkAsSolved: () -> Unit,
+    onDeleteProblem: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val formattedDate = dateFormat.format(problem.timestamp.toDate())
     var showOptionsMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    
+    // İkonlar için state'ler
+    var isFavorited by remember { mutableStateOf(false) }
+    var upvoted by remember { mutableStateOf(false) }
+    var downvoted by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier
@@ -291,16 +307,13 @@ fun ProblemHeader(
                             expanded = showOptionsMenu,
                             onDismissRequest = { showOptionsMenu = false }
                         ) {
-                            if (!problem.solved) {
-                                DropdownMenuItem(
-                                    text = { Text("Çözüldü olarak işaretle") },
-                                    onClick = { 
-                                        onMarkAsSolved()
-                                        showOptionsMenu = false
-                                    }
-                                )
-                            }
-                            // Silme seçeneği buraya eklenebilir
+                            DropdownMenuItem(
+                                text = { Text("Sil") },
+                                onClick = { 
+                                    showDeleteConfirmDialog = true
+                                    showOptionsMenu = false
+                                }
+                            )
                         }
                     }
                 }
@@ -308,42 +321,53 @@ fun ProblemHeader(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // Kullanıcı bilgisi 
+            // Kullanıcı bilgisi ve Çözüldü butonu
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Profil resmi
-                Surface(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape),
-                    color = MaterialTheme.colorScheme.primary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                    // Profil resmi
+                    Surface(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape),
+                        color = MaterialTheme.colorScheme.primary
                     ) {
-                        Text(
-                            text = problem.userName.take(1).uppercase(),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            textAlign = TextAlign.Center
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = problem.userName.take(1).uppercase(),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    Text(
+                        text = problem.userName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                Text(
-                    text = problem.userName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // Çözüldü etiketi
-                if (problem.solved) {
+                // Çözüldü butonu
+                if (isOwner && !problem.solved) {
+                    Button(
+                        onClick = onMarkAsSolved,
+                        modifier = Modifier.padding(start = 8.dp),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text("Çözüldü olarak işaretle")
+                    }
+                } else if (problem.solved) {
                     Surface(
                         color = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -382,22 +406,34 @@ fun ProblemHeader(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
                         contentDescription = "Yukarı Oy",
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { 
+                                upvoted = !upvoted
+                                if (upvoted) downvoted = false
+                            },
+                        tint = if (upvoted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                     
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "Aşağı Oy",
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { 
+                                downvoted = !downvoted
+                                if (downvoted) upvoted = false
+                            },
+                        tint = if (downvoted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                     
                     Icon(
                         imageVector = Icons.Default.Favorite,
                         contentDescription = "Favori",
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { isFavorited = !isFavorited },
+                        tint = if (isFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
                 
@@ -409,13 +445,41 @@ fun ProblemHeader(
             }
         }
     }
+    
+    // Silme onay dialoğu
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Soruyu Sil") },
+            text = { Text("Bu soruyu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteProblem()
+                        showDeleteConfirmDialog = false
+                    }
+                ) {
+                    Text("Sil", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text("İptal")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun CommentItem(
     comment: Comment,
     isOwner: Boolean,
-    onMarkAsAccepted: () -> Unit
+    isCommentOwner: Boolean,
+    onMarkAsAccepted: () -> Unit,
+    onDeleteComment: () -> Unit
 ) {
     // Debug için yorum bilgilerini logla
     LaunchedEffect(comment.id) {
@@ -432,8 +496,10 @@ fun CommentItem(
     }
     
     var showOptionsMenu by remember { mutableStateOf(false) }
-    val currentUser by remember { mutableStateOf(comment.userId) }
-    val isCommentOwner = currentUser == comment.userId
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var isFavorited by remember { mutableStateOf(false) }
+    var upvoted by remember { mutableStateOf(false) }
+    var downvoted by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -462,8 +528,24 @@ fun CommentItem(
                 )
                 
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Eğer sorunun sahibiyse ve yorum kabul edilmemişse, Kabul Et butonu göster
+                    if (isOwner && !comment.isAcceptedAnswer) {
+                        Button(
+                            onClick = onMarkAsAccepted,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiary
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Text("Kabul Et")
+                        }
+                    }
+                    
+                    // Yorum kabul edildiyse, Kabul Edildi etiketi göster
                     if (comment.isAcceptedAnswer) {
                         Surface(
                             color = MaterialTheme.colorScheme.primary,
@@ -478,7 +560,8 @@ fun CommentItem(
                         }
                     }
                     
-                    if (isOwner || isCommentOwner) {
+                    // Yorum sahibiyse, silme seçeneği için 3 nokta menüsü göster
+                    if (isCommentOwner) {
                         Box {
                             IconButton(onClick = { showOptionsMenu = true }) {
                                 Icon(
@@ -491,25 +574,13 @@ fun CommentItem(
                                 expanded = showOptionsMenu,
                                 onDismissRequest = { showOptionsMenu = false }
                             ) {
-                                if (isOwner && !comment.isAcceptedAnswer) {
-                                    DropdownMenuItem(
-                                        text = { Text("Kabul Et") },
-                                        onClick = { 
-                                            onMarkAsAccepted()
-                                            showOptionsMenu = false
-                                        }
-                                    )
-                                }
-                                
-                                if (isCommentOwner) {
-                                    DropdownMenuItem(
-                                        text = { Text("Sil") },
-                                        onClick = { 
-                                            // Silme işlemi eklenecek
-                                            showOptionsMenu = false
-                                        }
-                                    )
-                                }
+                                DropdownMenuItem(
+                                    text = { Text("Sil") },
+                                    onClick = { 
+                                        showDeleteConfirmDialog = true
+                                        showOptionsMenu = false
+                                    }
+                                )
                             }
                         }
                     }
@@ -538,22 +609,34 @@ fun CommentItem(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
                         contentDescription = "Yukarı Oy",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { 
+                                upvoted = !upvoted
+                                if (upvoted) downvoted = false
+                            },
+                        tint = if (upvoted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                     
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "Aşağı Oy",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { 
+                                downvoted = !downvoted
+                                if (downvoted) upvoted = false
+                            },
+                        tint = if (downvoted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                     
                     Icon(
                         imageVector = Icons.Default.Favorite,
                         contentDescription = "Favori",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { isFavorited = !isFavorited },
+                        tint = if (isFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
                 
@@ -564,5 +647,31 @@ fun CommentItem(
                 )
             }
         }
+    }
+    
+    // Silme onay dialoğu
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Yanıtı Sil") },
+            text = { Text("Bu yanıtı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteComment()
+                        showDeleteConfirmDialog = false
+                    }
+                ) {
+                    Text("Sil", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text("İptal")
+                }
+            }
+        )
     }
 } 

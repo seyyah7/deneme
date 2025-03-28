@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
@@ -361,18 +362,41 @@ fun UserAnswersTab(
                     Text("Henüz bir soruya cevap vermediniz.")
                 }
             } else {
+                // Cevapları soruya göre gruplayalım
+                val groupedComments = userCommentsState.comments.groupBy { it.problemId }
+                
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(userCommentsState.comments) { commentWithTitle ->
-                        UserCommentItem(
-                            commentWithTitle = commentWithTitle,
-                            onNavigateToProblemDetail = onNavigateToProblemDetail,
-                            onDeleteComment = onDeleteComment
-                        )
+                    groupedComments.forEach { (problemId, commentsWithTitle) ->
+                        // Gruplanmış sorular için başlık göster
+                        item(key = "problem_$problemId") {
+                            // Her problem başlığı için ilk elemanın problem başlığını kullan
+                            val problemTitle = commentsWithTitle.first().problemTitle
+                            ProblemTitleCard(
+                                problemTitle = problemTitle,
+                                problemId = problemId,
+                                onNavigateToProblemDetail = onNavigateToProblemDetail
+                            )
+                        }
+                        
+                        // Bu soruya verilen cevapları göster
+                        items(commentsWithTitle, key = { it.comment.id }) { commentWithTitle ->
+                            UserCommentItem(
+                                commentWithTitle = commentWithTitle,
+                                onNavigateToProblemDetail = onNavigateToProblemDetail,
+                                onDeleteComment = onDeleteComment
+                            )
+                        }
+                        
+                        // Gruplar arasına ayrıcı koy
+                        item(key = "divider_$problemId") {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Divider()
+                        }
                     }
                 }
             }
@@ -394,6 +418,30 @@ fun UserAnswersTab(
 }
 
 @Composable
+fun ProblemTitleCard(
+    problemTitle: String,
+    problemId: String,
+    onNavigateToProblemDetail: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onNavigateToProblemDetail(problemId) },
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        )
+    ) {
+        Text(
+            text = problemTitle,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(16.dp)
+        )
+    }
+}
+
+@Composable
 fun UserCommentItem(
     commentWithTitle: ProblemRepository.CommentWithProblemTitle,
     onNavigateToProblemDetail: (String) -> Unit,
@@ -401,11 +449,12 @@ fun UserCommentItem(
 ) {
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
+    var isFavorited by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onNavigateToProblemDetail(commentWithTitle.problemId) },
+            .padding(start = 16.dp), // Cevapları girintili göster
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(
@@ -413,18 +462,16 @@ fun UserCommentItem(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Problem Başlığı ve Menü
+            // Cevap içeriği ve 3 nokta menüsü
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
                 Text(
-                    text = commentWithTitle.problemTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
+                    text = commentWithTitle.comment.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
@@ -455,29 +502,42 @@ fun UserCommentItem(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // Yorum içeriği - sadece kısa bir bölüm
-            Text(
-                text = commentWithTitle.comment.text,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            // Kabul edildi durumu
-            if (commentWithTitle.comment.isAcceptedAnswer) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.tertiary
+            // Kabul edildi durumu, favori ve tarih
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "Kabul Edildi",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.onTertiary
+                    if (commentWithTitle.comment.isAcceptedAnswer) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.tertiary
+                        ) {
+                            Text(
+                                text = "Kabul Edildi",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                color = MaterialTheme.colorScheme.onTertiary
+                            )
+                        }
+                    }
+                    
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Favori",
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { isFavorited = !isFavorited },
+                        tint = if (isFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
+                
+                // Cevap tarihi burada gösterilebilir
+                // Text(text = formattedDate)
             }
         }
     }
@@ -514,11 +574,22 @@ fun UserFavoritesTab(
     onProblemClick: (String) -> Unit,
     viewModel: ProblemViewModel = hiltViewModel()
 ) {
-    val favoritesState = remember { mutableStateOf<List<Problem>>(emptyList()) }
-    val isLoading = remember { mutableStateOf(true) }
+    // Favori soruları ve yorumları takip etmek için state
+    var favoritedProblems by remember { mutableStateOf<List<Problem>>(emptyList()) }
+    var favoritedComments by remember { mutableStateOf<List<ProblemRepository.CommentWithProblemTitle>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
     
-    // Favoriler henüz uygulanmadığı için boş bir sayfa gösteriyoruz
-    if (isLoading.value) {
+    // Kullanıcı ayarlarından favori sorularını ve yorumlarını yükle
+    LaunchedEffect(Unit) {
+        // Normalde burası gerçek veri alacak, şu an için dummy veri gösteriyoruz
+        isLoading = false
+        
+        // Burada viewModel'den favori sorular ve yorumlar yüklenecek
+        // viewModel.loadFavoritedProblems()
+        // viewModel.loadFavoritedComments()
+    }
+    
+    if (isLoading) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -527,28 +598,101 @@ fun UserFavoritesTab(
         ) {
             CircularProgressIndicator()
         }
-    } else if (favoritesState.value.isEmpty()) {
+    } else if (favoritedProblems.isEmpty() && favoritedComments.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            Text("Henüz favori bir soru eklemediniz.")
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(48.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Henüz favori eklemediniz",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Sorular ve cevaplarda kalp ikonuna tıklayarak favorilere ekleyebilirsiniz",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     } else {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(favoritesState.value) { problem ->
-                UserProblemItem(
-                    problem = problem,
-                    onProblemClick = onProblemClick,
-                    onDeleteProblem = { /* Favoriden kaldırma işlevi eklenecek */ }
-                )
+            if (favoritedProblems.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Favori Sorular",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                
+                items(favoritedProblems) { problem ->
+                    UserProblemItem(
+                        problem = problem,
+                        onProblemClick = onProblemClick,
+                        onDeleteProblem = { /* Favoriden kaldırma işlevi eklenecek */ }
+                    )
+                }
+            }
+            
+            if (favoritedComments.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Favori Cevaplar",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                
+                // Cevapları soruya göre gruplayalım
+                val groupedComments = favoritedComments.groupBy { it.problemId }
+                
+                groupedComments.forEach { (problemId, commentsWithTitle) ->
+                    // Gruplanmış sorular için başlık göster
+                    item(key = "problem_$problemId") {
+                        // Her problem başlığı için ilk elemanın problem başlığını kullan
+                        val problemTitle = commentsWithTitle.first().problemTitle
+                        ProblemTitleCard(
+                            problemTitle = problemTitle,
+                            problemId = problemId,
+                            onNavigateToProblemDetail = onProblemClick
+                        )
+                    }
+                    
+                    // Bu soruya verilen cevapları göster
+                    items(commentsWithTitle, key = { it.comment.id }) { commentWithTitle ->
+                        UserCommentItem(
+                            commentWithTitle = commentWithTitle,
+                            onNavigateToProblemDetail = onProblemClick,
+                            onDeleteComment = { _, _ -> /* Favoriden kaldırma işlevi eklenecek */ }
+                        )
+                    }
+                }
             }
         }
     }
