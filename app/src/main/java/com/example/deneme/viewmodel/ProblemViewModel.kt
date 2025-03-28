@@ -1,5 +1,6 @@
 package com.example.deneme.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.deneme.model.Comment
@@ -35,6 +36,13 @@ class ProblemViewModel @Inject constructor(
     
     private val _operation = MutableSharedFlow<OperationState>()
     val operation: SharedFlow<OperationState> = _operation
+
+    // Kullanıcının soruları ve cevapları için state sınıfları
+    private val _userProblemsState = MutableStateFlow<UserProblemsState>(UserProblemsState.Loading)
+    val userProblemsState: StateFlow<UserProblemsState> = _userProblemsState
+
+    private val _userCommentsState = MutableStateFlow<UserCommentsState>(UserCommentsState.Loading)
+    val userCommentsState: StateFlow<UserCommentsState> = _userCommentsState
 
     fun loadProblems() {
         _problemsState.value = ProblemsState.Loading
@@ -86,10 +94,25 @@ class ProblemViewModel @Inject constructor(
     }
 
     fun loadComments(problemId: String) {
+        Log.d("ProblemViewModel", "loadComments çağrıldı: problemId=$problemId")
         _commentsState.value = CommentsState.Loading
         viewModelScope.launch {
-            problemRepository.getCommentsForProblem(problemId).collect { comments ->
-                _commentsState.value = CommentsState.Success(comments)
+            try {
+                // Önce mevcut yorumları gözlemleyelim
+                problemRepository.getCommentsForProblem(problemId).collect { comments ->
+                    Log.d("ProblemViewModel", "Yorumlar başarıyla alındı: ${comments.size} adet")
+                    if (comments.isEmpty()) {
+                        Log.d("ProblemViewModel", "Bu soruya hiç yorum eklenmemiş")
+                    } else {
+                        comments.forEachIndexed { index, comment ->
+                            Log.d("ProblemViewModel", "Yorum $index - ID: ${comment.id}, Text: ${comment.text}, ProblemId: ${comment.problemId}")
+                        }
+                    }
+                    _commentsState.value = CommentsState.Success(comments)
+                }
+            } catch (e: Exception) {
+                Log.e("ProblemViewModel", "Yorumları yükleme hatası: ${e.message}", e)
+                _commentsState.value = CommentsState.Error("Yorumlar yüklenirken bir hata oluştu: ${e.message}")
             }
         }
     }
@@ -99,14 +122,43 @@ class ProblemViewModel @Inject constructor(
             val result = problemRepository.addProblem(title, description)
             result.fold(
                 onSuccess = { problemId ->
+                    Log.d("ProblemViewModel", "Yeni soru başarıyla eklendi, ID: $problemId, listeleri yeniliyorum")
+                    
+                    loadProblems()
+                    
+                    loadSolvedProblems()
+                    
+                    loadPopularProblems()
+                    
+                    loadMyProblems()
+                    
                     _operation.emit(OperationState.Success("Problem başarıyla eklendi"))
-                    // Listeleri güncelle
+                },
+                onFailure = { error ->
+                    Log.e("ProblemViewModel", "Soru eklenirken hata: ${error.message}")
+                    _operation.emit(OperationState.Error(error.message ?: "Problem eklenirken bir hata oluştu"))
+                }
+            )
+        }
+    }
+
+    fun addProblemWithCategory(title: String, description: String, category: String) {
+        viewModelScope.launch {
+            val result = problemRepository.addProblemWithCategory(title, description, category)
+            result.fold(
+                onSuccess = { problemId ->
+                    Log.d("ProblemViewModel", "Yeni soru başarıyla eklendi, ID: $problemId, kategori: $category")
+                    
+                    // Tüm listeleri yenile
                     loadProblems()
                     loadSolvedProblems()
                     loadPopularProblems()
                     loadMyProblems()
+                    
+                    _operation.emit(OperationState.Success("Problem başarıyla eklendi"))
                 },
                 onFailure = { error ->
+                    Log.e("ProblemViewModel", "Soru eklenirken hata: ${error.message}")
                     _operation.emit(OperationState.Error(error.message ?: "Problem eklenirken bir hata oluştu"))
                 }
             )
@@ -115,13 +167,29 @@ class ProblemViewModel @Inject constructor(
 
     fun addComment(problemId: String, text: String) {
         viewModelScope.launch {
+            Log.d("ProblemViewModel", "addComment çağrıldı: problemId=$problemId, text=$text")
+            _operation.emit(OperationState.Loading)
+            
             val result = problemRepository.addComment(problemId, text)
             result.fold(
                 onSuccess = { commentId ->
+                    Log.d("ProblemViewModel", "Yorum başarıyla eklendi, commentId: $commentId, listeleri yeniliyorum")
                     _operation.emit(OperationState.Success("Yorum başarıyla eklendi"))
+                    
+                    // 1 saniye bekle ve sonra yorumları yeniden yükle
+                    kotlinx.coroutines.delay(1000)
+                    
+                    // Yorumları yenile
                     loadComments(problemId)
+                    
+                    // Yorum sayısı değiştiği için problem detayını yenile
+                    loadProblem(problemId)
+                    
+                    // Popüler soruları yenile (yorum sayısı değiştiğinden sıralama etkilenir)
+                    loadPopularProblems()
                 },
                 onFailure = { error ->
+                    Log.e("ProblemViewModel", "Yorum ekleme hatası: ${error.message}")
                     _operation.emit(OperationState.Error(error.message ?: "Yorum eklenirken bir hata oluştu"))
                 }
             )
@@ -151,16 +219,149 @@ class ProblemViewModel @Inject constructor(
 
     fun markCommentAsAccepted(commentId: String, problemId: String) {
         viewModelScope.launch {
+            Log.d("ProblemViewModel", "markCommentAsAccepted çağrıldı: commentId=$commentId, problemId=$problemId")
+            _operation.emit(OperationState.Loading)
             val result = problemRepository.markCommentAsAccepted(commentId)
             result.fold(
                 onSuccess = {
+                    Log.d("ProblemViewModel", "Yorum başarıyla kabul edildi")
                     _operation.emit(OperationState.Success("Cevap kabul edildi"))
+                    
+                    // Yorumları yenile
                     loadComments(problemId)
+                    
+                    // Popüler soruları da yenileyelim
+                    loadPopularProblems()
                 },
                 onFailure = { error ->
+                    Log.e("ProblemViewModel", "Yorum kabul etme hatası: ${error.message}")
                     _operation.emit(OperationState.Error(error.message ?: "Yorum güncellenirken bir hata oluştu"))
                 }
             )
+        }
+    }
+
+    // Kullanıcının kendi sorularını yükle
+    fun loadUserProblems() {
+        _userProblemsState.value = UserProblemsState.Loading
+        viewModelScope.launch {
+            problemRepository.getUserProblems().collect { problems ->
+                _userProblemsState.value = UserProblemsState.Success(problems)
+            }
+        }
+    }
+
+    // Kullanıcının kendi cevaplarını yükle
+    fun loadUserComments() {
+        _userCommentsState.value = UserCommentsState.Loading
+        viewModelScope.launch {
+            problemRepository.getUserComments().collect { comments ->
+                _userCommentsState.value = UserCommentsState.Success(comments)
+            }
+        }
+    }
+
+    // Soru silme işlemi
+    fun deleteProblem(problemId: String) {
+        viewModelScope.launch {
+            _operation.emit(OperationState.Loading)
+            
+            val result = problemRepository.deleteProblem(problemId)
+            result.fold(
+                onSuccess = {
+                    _operation.emit(OperationState.Success("Soru başarıyla silindi"))
+                    
+                    // Tüm listeleri yeniden yükle
+                    loadProblems()
+                    loadSolvedProblems()
+                    loadPopularProblems()
+                    loadMyProblems()
+                    loadUserProblems()
+                },
+                onFailure = { error ->
+                    _operation.emit(OperationState.Error(error.message ?: "Soru silinirken bir hata oluştu"))
+                }
+            )
+        }
+    }
+
+    // Yorum silme işlemi
+    fun deleteComment(commentId: String, problemId: String) {
+        viewModelScope.launch {
+            _operation.emit(OperationState.Loading)
+            
+            val result = problemRepository.deleteComment(commentId)
+            result.fold(
+                onSuccess = {
+                    _operation.emit(OperationState.Success("Yorum başarıyla silindi"))
+                    
+                    // İlgili listeleri yenile
+                    loadComments(problemId)
+                    loadPopularProblems()
+                    loadUserComments()
+                },
+                onFailure = { error ->
+                    _operation.emit(OperationState.Error(error.message ?: "Yorum silinirken bir hata oluştu"))
+                }
+            )
+        }
+    }
+
+    // DEBUG: Firestore sorun teşhisi için kullanılacak yardımcı fonksiyon
+    fun debugFirestoreDiagnostics() {
+        viewModelScope.launch {
+            Log.d("FirestoreDiag", "========== FIRESTORE SORUN TEŞHİSİ BAŞLIYOR ==========")
+            
+            // 1. Doğrudan Firestore'dan tüm soruları al (filtre olmadan)
+            try {
+                val allProblems = problemRepository.getAllProblemsDirectly()
+                Log.d("FirestoreDiag", "1. Tüm sorular (filtresiz): ${allProblems.size} adet")
+                allProblems.forEachIndexed { index, problem ->
+                    Log.d("FirestoreDiag", "   $index. ID: ${problem.id}, Title: ${problem.title}, Solved: ${problem.solved}, AnswerCount: ${problem.answerCount}")
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreDiag", "Tüm soruları alma hatası: ${e.message}")
+            }
+            
+            // 2. Çözülmemiş soruları al
+            try {
+                val unsolvedProblems = problemRepository.getUnsolvedProblemsDirectly()
+                Log.d("FirestoreDiag", "2. Çözülmemiş sorular (solved=false): ${unsolvedProblems.size} adet")
+                unsolvedProblems.forEachIndexed { index, problem ->
+                    Log.d("FirestoreDiag", "   $index. ID: ${problem.id}, Title: ${problem.title}, Solved: ${problem.solved}, AnswerCount: ${problem.answerCount}")
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreDiag", "Çözülmemiş soruları alma hatası: ${e.message}")
+            }
+            
+            // 3. Çözülmüş soruları al
+            try {
+                val solvedProblems = problemRepository.getSolvedProblemsDirectly()
+                Log.d("FirestoreDiag", "3. Çözülmüş sorular (solved=true): ${solvedProblems.size} adet")
+                solvedProblems.forEachIndexed { index, problem ->
+                    Log.d("FirestoreDiag", "   $index. ID: ${problem.id}, Title: ${problem.title}, Solved: ${problem.solved}, AnswerCount: ${problem.answerCount}")
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreDiag", "Çözülmüş soruları alma hatası: ${e.message}")
+            }
+            
+            // 4. Popüler soruları al
+            try {
+                val popularProblems = problemRepository.getPopularProblemsDirectly()
+                Log.d("FirestoreDiag", "4. Popüler sorular (answerCount DESC): ${popularProblems.size} adet")
+                popularProblems.forEachIndexed { index, problem ->
+                    Log.d("FirestoreDiag", "   $index. ID: ${problem.id}, Title: ${problem.title}, Solved: ${problem.solved}, AnswerCount: ${problem.answerCount}")
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreDiag", "Popüler soruları alma hatası: ${e.message}")
+            }
+            
+            Log.d("FirestoreDiag", "========== FIRESTORE SORUN TEŞHİSİ TAMAMLANDI ==========")
+            
+            // Normal veri yükleme işlemlerini başlatalım
+            loadProblems()
+            loadSolvedProblems()
+            loadPopularProblems()
         }
     }
 
@@ -186,5 +387,19 @@ class ProblemViewModel @Inject constructor(
         object Loading : OperationState()
         data class Success(val message: String) : OperationState()
         data class Error(val message: String) : OperationState()
+    }
+
+    // Kullanıcı soruları için state
+    sealed class UserProblemsState {
+        object Loading : UserProblemsState()
+        data class Success(val problems: List<Problem>) : UserProblemsState()
+        data class Error(val message: String) : UserProblemsState()
+    }
+
+    // Kullanıcı yorumları için state
+    sealed class UserCommentsState {
+        object Loading : UserCommentsState()
+        data class Success(val comments: List<ProblemRepository.CommentWithProblemTitle>) : UserCommentsState()
+        data class Error(val message: String) : UserCommentsState()
     }
 } 

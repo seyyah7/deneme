@@ -40,8 +40,17 @@ fun HomeScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Sorular", "Çözülenler", "Popüler")
     
+    // İlk yükleme için - bir kez çalışır
+    LaunchedEffect(Unit) {
+        Log.d("HomeScreen", "İlk yükleme, tüm listeleri yüklüyorum")
+        viewModel.loadProblems()
+        viewModel.loadSolvedProblems()
+        viewModel.loadPopularProblems()
+    }
+    
     // Tab değiştiğinde ilgili verileri yükle
     LaunchedEffect(selectedTabIndex) {
+        Log.d("HomeScreen", "Tab değişti: ${tabs[selectedTabIndex]}")
         when (selectedTabIndex) {
             0 -> viewModel.loadProblems()
             1 -> viewModel.loadSolvedProblems()
@@ -105,6 +114,7 @@ fun ProblemsList(
     
     when (problemsState) {
         is ProblemViewModel.ProblemsState.Loading -> {
+            Log.d("HomeScreen", "ProblemsList: Yükleniyor...")
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -113,6 +123,7 @@ fun ProblemsList(
             }
         }
         is ProblemViewModel.ProblemsState.Success -> {
+            Log.d("HomeScreen", "ProblemsList: Başarılı, ${problemsState.problems.size} adet soru bulundu")
             if (problemsState.problems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -121,6 +132,11 @@ fun ProblemsList(
                     Text("Bu kategoride soru bulunamadı")
                 }
             } else {
+                // Soruların ID ve başlıklarını logla
+                problemsState.problems.forEach { problem ->
+                    Log.d("HomeScreen", "Soru: ID=${problem.id}, Başlık=${problem.title}, Çözüldü=${problem.solved}, CevapSayısı=${problem.answerCount}")
+                }
+                
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
@@ -138,6 +154,7 @@ fun ProblemsList(
             }
         }
         is ProblemViewModel.ProblemsState.Error -> {
+            Log.e("HomeScreen", "ProblemsList: Hata, ${problemsState.message}")
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
