@@ -614,6 +614,33 @@ class ProblemRepository @Inject constructor() {
         }
     }
 
+    // Belirli bir kullanıcının sorularını getiren fonksiyon
+    fun getUserProblemsById(userId: String): Flow<List<Problem>> = flow {
+        try {
+            Log.d("ProblemRepository", "getUserProblemsById çağrıldı, userId: $userId")
+            
+            // Tüm soruları al
+            val snapshot = problemsCollection
+                .get()
+                .await()
+            
+            val allProblems = snapshot.toObjects(Problem::class.java)
+            
+            // Belirtilen kullanıcının sorularını filtrele
+            val userProblems = allProblems.filter { it.userId == userId }
+            
+            // Soruları timestamp'e göre sırala (en yeni en üstte)
+            val sortedProblems = userProblems.sortedByDescending { it.timestamp.seconds }
+            
+            Log.d("ProblemRepository", "getUserProblemsById: ${sortedProblems.size} adet kullanıcı sorusu bulundu")
+            
+            emit(sortedProblems)
+        } catch (e: Exception) {
+            Log.e("ProblemRepository", "getUserProblemsById HATA: ${e.message}")
+            emit(emptyList())
+        }
+    }
+
     fun getUserComments(): Flow<List<CommentWithProblemTitle>> = flow {
         val currentUser = auth.currentUser ?: return@flow emit(emptyList<CommentWithProblemTitle>())
         
@@ -658,6 +685,53 @@ class ProblemRepository @Inject constructor() {
             emit(sortedComments)
         } catch (e: Exception) {
             Log.e("ProblemRepository", "getUserComments HATA: ${e.message}")
+            emit(emptyList())
+        }
+    }
+
+    // Belirli bir kullanıcının yorumlarını getiren fonksiyon
+    fun getUserCommentsById(userId: String): Flow<List<CommentWithProblemTitle>> = flow {
+        try {
+            Log.d("ProblemRepository", "getUserCommentsById çağrıldı, userId: $userId")
+            
+            // Tüm yorumları al
+            val commentsSnapshot = commentsCollection
+                .get()
+                .await()
+            
+            val allComments = commentsSnapshot.toObjects(Comment::class.java)
+            
+            // Belirtilen kullanıcının yorumlarını filtrele
+            val userComments = allComments.filter { it.userId == userId }
+            
+            // Tüm soruları al
+            val problemsSnapshot = problemsCollection
+                .get()
+                .await()
+            
+            val allProblems = problemsSnapshot.toObjects(Problem::class.java)
+            val problemsMap = allProblems.associateBy { it.id }
+            
+            // Yorum ve soru başlıklarını birleştir
+            val commentsWithProblemTitles = userComments.mapNotNull { comment ->
+                val problem = problemsMap[comment.problemId]
+                if (problem != null) {
+                    CommentWithProblemTitle(
+                        comment = comment,
+                        problemTitle = problem.title,
+                        problemId = problem.id
+                    )
+                } else null
+            }
+            
+            // Yorumları timestamp'e göre sırala (en yeni en üstte)
+            val sortedComments = commentsWithProblemTitles.sortedByDescending { it.comment.timestamp.seconds }
+            
+            Log.d("ProblemRepository", "getUserCommentsById: ${sortedComments.size} adet kullanıcı yorumu bulundu")
+            
+            emit(sortedComments)
+        } catch (e: Exception) {
+            Log.e("ProblemRepository", "getUserCommentsById HATA: ${e.message}")
             emit(emptyList())
         }
     }

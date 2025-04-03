@@ -14,8 +14,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.collectLatest
 fun ProblemDetailScreen(
     problemId: String,
     onNavigateBack: () -> Unit,
+    onNavigateToUserProfile: (String) -> Unit = {},
     viewModel: ProblemViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
@@ -177,6 +178,9 @@ fun ProblemDetailScreen(
                             onDeleteProblem = {
                                 viewModel.deleteProblem(problem.id)
                                 onNavigateBack()
+                            },
+                            onUserClick = { userId ->
+                                onNavigateToUserProfile(userId)
                             }
                         )
                     }
@@ -210,13 +214,14 @@ fun ProblemDetailScreen(
                                 items(commentState.comments) { comment ->
                                     CommentItem(
                                         comment = comment,
+                                        currentUserId = currentUser?.id ?: "",
                                         isOwner = currentUser?.id == problem.userId,
                                         isCommentOwner = currentUser?.id == comment.userId,
-                                        onMarkAsAccepted = {
-                                            viewModel.markCommentAsAccepted(comment.id, problemId)
-                                        },
                                         onDeleteComment = {
                                             viewModel.deleteComment(comment.id, problemId)
+                                        },
+                                        onUserClick = { userId ->
+                                            onNavigateToUserProfile(userId)
                                         }
                                     )
                                 }
@@ -256,7 +261,8 @@ fun ProblemHeader(
     problem: Problem,
     isOwner: Boolean,
     onMarkAsSolved: () -> Unit,
-    onDeleteProblem: () -> Unit
+    onDeleteProblem: () -> Unit,
+    onUserClick: (String) -> Unit = {}
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val formattedDate = dateFormat.format(problem.timestamp.toDate())
@@ -281,19 +287,48 @@ fun ProblemHeader(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Başlık ve Menü
+            // Kullanıcı bilgisi - profil ve kullanıcı adı
+            // En üste çekerek sol köşede gösteriyoruz
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onUserClick(problem.userId) }
+                    .padding(bottom = 8.dp) // Altındaki içerikle arasına biraz boşluk
             ) {
+                // Profil resmi
+                Surface(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = problem.userName.take(1).uppercase(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                // Kullanıcı adı - daha belirgin hale getiriyoruz
                 Text(
-                    text = problem.title,
-                    style = MaterialTheme.typography.titleLarge,
+                    text = problem.userName,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Menü (sadece soru sahibiyse)
                 if (isOwner) {
                     Box {
                         IconButton(onClick = { showOptionsMenu = true }) {
@@ -319,70 +354,23 @@ fun ProblemHeader(
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Kullanıcı bilgisi ve Çözüldü butonu
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+            // Çözüldü durumu
+            if (problem.solved) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.align(Alignment.Start)
                 ) {
-                    // Profil resmi
-                    Surface(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.primary
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = problem.userName.take(1).uppercase(),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
                     Text(
-                        text = problem.userName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Çözüldü",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
                 
-                // Çözüldü butonu
-                if (isOwner && !problem.solved) {
-                    Button(
-                        onClick = onMarkAsSolved,
-                        modifier = Modifier.padding(start = 8.dp),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Text("Çözüldü olarak işaretle")
-                    }
-                } else if (problem.solved) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Text(
-                            text = "Çözüldü",
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
             
             // Problem açıklaması
             Text(
@@ -428,7 +416,7 @@ fun ProblemHeader(
                     )
                     
                     Icon(
-                        imageVector = Icons.Default.Favorite,
+                        imageVector = Icons.Outlined.Favorite,
                         contentDescription = "Favori",
                         modifier = Modifier
                             .size(24.dp)
@@ -476,10 +464,11 @@ fun ProblemHeader(
 @Composable
 fun CommentItem(
     comment: Comment,
+    currentUserId: String,
     isOwner: Boolean,
     isCommentOwner: Boolean,
-    onMarkAsAccepted: () -> Unit,
-    onDeleteComment: () -> Unit
+    onDeleteComment: () -> Unit,
+    onUserClick: (String) -> Unit = {}
 ) {
     // Debug için yorum bilgilerini logla
     LaunchedEffect(comment.id) {
@@ -505,10 +494,7 @@ fun CommentItem(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (comment.isAcceptedAnswer) 
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            else 
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         )
     ) {
         Column(
@@ -516,85 +502,77 @@ fun CommentItem(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // Kullanıcı bilgisi
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onUserClick(comment.userId) }
+                    .padding(bottom = 12.dp)
             ) {
+                // Profil resmi
+                Surface(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = comment.userName.take(1).uppercase(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                // Kullanıcı adı
                 Text(
                     text = comment.userName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Eğer sorunun sahibiyse ve yorum kabul edilmemişse, Kabul Et butonu göster
-                    if (isOwner && !comment.isAcceptedAnswer) {
-                        Button(
-                            onClick = onMarkAsAccepted,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiary
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.padding(end = 4.dp)
-                        ) {
-                            Text("Kabul Et")
-                        }
-                    }
-                    
-                    // Yorum kabul edildiyse, Kabul Edildi etiketi göster
-                    if (comment.isAcceptedAnswer) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(
-                                text = "Kabul Edildi",
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Yorum sahibiyse, silme seçeneği için menü butonunu row içine taşıyalım
+                if (isCommentOwner) {
+                    Box {
+                        IconButton(onClick = { showOptionsMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Daha Fazla"
                             )
                         }
-                    }
-                    
-                    // Yorum sahibiyse, silme seçeneği için 3 nokta menüsü göster
-                    if (isCommentOwner) {
-                        Box {
-                            IconButton(onClick = { showOptionsMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Daha Fazla"
-                                )
-                            }
-                            
-                            DropdownMenu(
-                                expanded = showOptionsMenu,
-                                onDismissRequest = { showOptionsMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Sil") },
-                                    onClick = { 
-                                        showDeleteConfirmDialog = true
-                                        showOptionsMenu = false
-                                    }
-                                )
-                            }
+                        
+                        DropdownMenu(
+                            expanded = showOptionsMenu,
+                            onDismissRequest = { showOptionsMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Sil") },
+                                onClick = { 
+                                    showDeleteConfirmDialog = true
+                                    showOptionsMenu = false
+                                }
+                            )
                         }
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
-            
+            // Yorum metni
             Text(
                 text = comment.text,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 8.dp)
             )
-            
-            Spacer(modifier = Modifier.height(8.dp))
             
             // Alt kısım: Butonlar ve tarih
             Row(
@@ -631,7 +609,7 @@ fun CommentItem(
                     )
                     
                     Icon(
-                        imageVector = Icons.Default.Favorite,
+                        imageVector = Icons.Outlined.Favorite,
                         contentDescription = "Favori",
                         modifier = Modifier
                             .size(20.dp)

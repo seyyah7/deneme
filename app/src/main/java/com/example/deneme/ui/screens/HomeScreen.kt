@@ -29,8 +29,7 @@ import com.example.deneme.viewmodel.AuthViewModel
 @Composable
 fun HomeScreen(
     onNavigateToProblemDetail: (String) -> Unit,
-    viewModel: ProblemViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    viewModel: ProblemViewModel = hiltViewModel()
 ) {
     val problemsState by viewModel.problemsState.collectAsState()
     val solvedProblemsState by viewModel.solvedProblemsState.collectAsState()
@@ -80,24 +79,21 @@ fun HomeScreen(
                 onProblemClick = onNavigateToProblemDetail,
                 onToggleSolved = { problemId -> 
                     viewModel.toggleProblemSolvedStatus(problemId)
-                },
-                authViewModel = authViewModel
+                }
             )
             1 -> ProblemsList(
                 problemsState = solvedProblemsState,
                 onProblemClick = onNavigateToProblemDetail,
                 onToggleSolved = { problemId -> 
                     viewModel.toggleProblemSolvedStatus(problemId)
-                },
-                authViewModel = authViewModel
+                }
             )
             2 -> ProblemsList(
                 problemsState = popularProblemsState,
                 onProblemClick = onNavigateToProblemDetail,
                 onToggleSolved = { problemId -> 
                     viewModel.toggleProblemSolvedStatus(problemId)
-                },
-                authViewModel = authViewModel
+                }
             )
         }
     }
@@ -107,11 +103,8 @@ fun HomeScreen(
 fun ProblemsList(
     problemsState: ProblemViewModel.ProblemsState,
     onProblemClick: (String) -> Unit,
-    onToggleSolved: (String) -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    onToggleSolved: (String) -> Unit
 ) {
-    val currentUser by authViewModel.currentUser.collectAsState()
-    
     when (problemsState) {
         is ProblemViewModel.ProblemsState.Loading -> {
             Log.d("HomeScreen", "ProblemsList: Yükleniyor...")
@@ -146,8 +139,7 @@ fun ProblemsList(
                         ExpandableProblemItem(
                             problem = problem,
                             onProblemClick = { onProblemClick(problem.id) },
-                            onToggleSolved = { onToggleSolved(problem.id) },
-                            isOwner = currentUser?.id == problem.userId
+                            onToggleSolved = { onToggleSolved(problem.id) }
                         )
                     }
                 }
@@ -170,8 +162,7 @@ fun ProblemsList(
 fun ExpandableProblemItem(
     problem: Problem,
     onProblemClick: () -> Unit,
-    onToggleSolved: () -> Unit,
-    isOwner: Boolean = false
+    onToggleSolved: () -> Unit
 ) {
     Card(
         modifier = Modifier

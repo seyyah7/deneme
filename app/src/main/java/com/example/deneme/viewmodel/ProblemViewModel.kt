@@ -241,12 +241,16 @@ class ProblemViewModel @Inject constructor(
         }
     }
 
-    // Kullanıcının kendi sorularını yükle
+    // Kullanıcının kendi sorularını getiren yardımcı fonksiyon
     fun loadUserProblems() {
         _userProblemsState.value = UserProblemsState.Loading
         viewModelScope.launch {
-            problemRepository.getUserProblems().collect { problems ->
-                _userProblemsState.value = UserProblemsState.Success(problems)
+            try {
+                problemRepository.getUserProblems().collect { problems ->
+                    _userProblemsState.value = UserProblemsState.Success(problems)
+                }
+            } catch (e: Exception) {
+                _userProblemsState.value = UserProblemsState.Error(e.message ?: "Bir hata oluştu")
             }
         }
     }
@@ -255,8 +259,40 @@ class ProblemViewModel @Inject constructor(
     fun loadUserComments() {
         _userCommentsState.value = UserCommentsState.Loading
         viewModelScope.launch {
-            problemRepository.getUserComments().collect { comments ->
-                _userCommentsState.value = UserCommentsState.Success(comments)
+            try {
+                problemRepository.getUserComments().collect { comments ->
+                    _userCommentsState.value = UserCommentsState.Success(comments)
+                }
+            } catch (e: Exception) {
+                _userCommentsState.value = UserCommentsState.Error(e.message ?: "Bir hata oluştu")
+            }
+        }
+    }
+
+    // Belirli bir kullanıcının sorularını yükleme
+    fun loadUserProblemsById(userId: String) {
+        _userProblemsState.value = UserProblemsState.Loading
+        viewModelScope.launch {
+            try {
+                problemRepository.getUserProblemsById(userId).collect { problems ->
+                    _userProblemsState.value = UserProblemsState.Success(problems)
+                }
+            } catch (e: Exception) {
+                _userProblemsState.value = UserProblemsState.Error(e.message ?: "Bir hata oluştu")
+            }
+        }
+    }
+
+    // Belirli bir kullanıcının yorumlarını yükleme
+    fun loadUserCommentsById(userId: String) {
+        _userCommentsState.value = UserCommentsState.Loading
+        viewModelScope.launch {
+            try {
+                problemRepository.getUserCommentsById(userId).collect { comments ->
+                    _userCommentsState.value = UserCommentsState.Success(comments)
+                }
+            } catch (e: Exception) {
+                _userCommentsState.value = UserCommentsState.Error(e.message ?: "Bir hata oluştu")
             }
         }
     }

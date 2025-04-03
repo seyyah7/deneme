@@ -1,6 +1,9 @@
 package com.example.deneme.ui.screens
 
+import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,8 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
@@ -18,16 +21,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.deneme.model.Problem
 import com.example.deneme.repository.ProblemRepository
 import com.example.deneme.viewmodel.AuthViewModel
 import com.example.deneme.viewmodel.ProblemViewModel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,10 +51,34 @@ fun ProfileScreen(
     val userCommentsState by viewModel.userCommentsState.collectAsState() 
     val currentUser by authViewModel.currentUser.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     
     // Tab için state ve callback'ler
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("sorular", "cevaplar", "favori")
+    
+    // Resim seçim işleyici
+    val context = LocalContext.current
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            // Profil resmini Firebase Storage'a yükle
+            authViewModel.uploadProfileImage(
+                imageUri = it,
+                onSuccess = {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Profil resmi başarıyla yüklendi")
+                    }
+                },
+                onError = { errorMessage ->
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Hata: $errorMessage")
+                    }
+                }
+            )
+        }
+    }
     
     // İşlem durumunu takip et
     LaunchedEffect(Unit) {
@@ -96,26 +130,44 @@ fun ProfileScreen(
             ) {
                 Spacer(modifier = Modifier.height(32.dp))
                 
-                // Profil resmi
-                Surface(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape),
-                    color = MaterialTheme.colorScheme.primaryContainer
+                // Profil resmi bölümü
+                Box(
+                    modifier = Modifier.size(100.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Profil",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    // Profil resmi veya default icon
+                    Surface(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        if (currentUser?.profileImageUrl?.isNotEmpty() == true) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(currentUser?.profileImageUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Profil Resmi",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Profil",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // Kullanıcı adı
                 Text(
-                    text = currentUser?.name ?: "kullanıcı adı",
+                    text = currentUser?.username ?: "kullanıcı adı",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -449,7 +501,6 @@ fun UserCommentItem(
 ) {
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
-    var isFavorited by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier
@@ -498,46 +549,6 @@ fun UserCommentItem(
                         )
                     }
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Kabul edildi durumu, favori ve tarih
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (commentWithTitle.comment.isAcceptedAnswer) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.tertiary
-                        ) {
-                            Text(
-                                text = "Kabul Edildi",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                color = MaterialTheme.colorScheme.onTertiary
-                            )
-                        }
-                    }
-                    
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = "Favori",
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { isFavorited = !isFavorited },
-                        tint = if (isFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-                
-                // Cevap tarihi burada gösterilebilir
-                // Text(text = formattedDate)
             }
         }
     }
@@ -610,15 +621,6 @@ fun UserFavoritesTab(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.size(48.dp)
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
                 Text(
                     text = "Henüz favori eklemediniz",
                     style = MaterialTheme.typography.bodyLarge,
@@ -628,7 +630,7 @@ fun UserFavoritesTab(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "Sorular ve cevaplarda kalp ikonuna tıklayarak favorilere ekleyebilirsiniz",
+                    text = "Sorular ve cevaplarda favorilere ekleyebilirsiniz",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center

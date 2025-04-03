@@ -10,53 +10,57 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.deneme.viewmodel.AuthViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.graphics.Color
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onNavigateToSignUp: () -> Unit,
-    onNavigateToHome: () -> Unit,
+    onNavigateToSignUp: () -> Unit = {},
+    onNavigateToHome: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel()
 ) {
+    var emailOrUsername by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    
     val authState by viewModel.authState.collectAsState()
     
     LaunchedEffect(authState) {
-        if (authState is AuthViewModel.AuthState.Authenticated) {
-            try {
-                Log.d("LoginScreen", "Kullanıcı kimliği doğrulandı, ana ekrana yönlendiriliyor")
-                onNavigateToHome()
-            } catch (e: Exception) {
-                // Navigasyon hatası olursa log at
-                Log.e("LoginScreen", "Navigasyon hatası: ${e.message}", e)
+        when (authState) {
+            is AuthViewModel.AuthState.Authenticated -> {
+                try {
+                    Log.d("LoginScreen", "Kullanıcı kimliği doğrulandı, ana ekrana yönlendiriliyor")
+                    onNavigateToHome()
+                } catch (e: Exception) {
+                    Log.e("LoginScreen", "Navigasyon hatası: ${e.message}", e)
+                }
             }
-        } else if (authState is AuthViewModel.AuthState.Error) {
-            Log.e("LoginScreen", "Kimlik doğrulama hatası: ${(authState as AuthViewModel.AuthState.Error).message}")
+            is AuthViewModel.AuthState.Loading -> {
+                Log.d("LoginScreen", "Yükleniyor durumu")
+            }
+            is AuthViewModel.AuthState.Error -> {
+                Log.e("LoginScreen", "Hata durumu: ${(authState as AuthViewModel.AuthState.Error).message}")
+            }
+            else -> {}
         }
     }
-
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(authState) {
         Log.d("LoginScreen", "Auth state değişti: $authState")
         when (authState) {
             is AuthViewModel.AuthState.Loading -> {
                 Log.d("LoginScreen", "Yükleniyor durumu")
-                isLoading = true
-                errorMessage = null
             }
             is AuthViewModel.AuthState.Error -> {
                 Log.e("LoginScreen", "Hata durumu: ${(authState as AuthViewModel.AuthState.Error).message}")
-                isLoading = false
-                errorMessage = (authState as AuthViewModel.AuthState.Error).message
             }
             else -> {
-                isLoading = false
-                errorMessage = null
             }
         }
     }
@@ -69,71 +73,87 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Deneme",
+            text = "Giriş Yap",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 32.dp)
         )
-
+        
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("E-posta") },
+            value = emailOrUsername,
+            onValueChange = { emailOrUsername = it },
+            label = { Text("E-posta veya Kullanıcı Adı") },
+            singleLine = true,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(bottom = 16.dp)
         )
-
+        
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
             label = { Text("Şifre") },
-            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
             ),
+            trailingIcon = {
+                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = if (isPasswordVisible) "Şifreyi Gizle" else "Şifreyi Göster",
+                        tint = if (isPasswordVisible) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(bottom = 24.dp)
         )
-
-        errorMessage?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
+        
         Button(
             onClick = {
-                Log.d("LoginScreen", "Giriş butonu tıklandı: $email")
-                viewModel.signIn(email, password)
+                // E-posta veya kullanıcı adı kontrolü
+                if (emailOrUsername.contains("@")) {
+                    viewModel.signIn(emailOrUsername, password)
+                } else {
+                    viewModel.signInWithUsername(emailOrUsername, password)
+                }
             },
-            enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
+            enabled = emailOrUsername.isNotBlank() && password.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .height(50.dp)
         ) {
-            if (isLoading) {
+            if (authState is AuthViewModel.AuthState.Loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(24.dp)
                 )
             } else {
                 Text("Giriş Yap")
             }
         }
-
+        
         TextButton(
             onClick = onNavigateToSignUp,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(top = 8.dp)
         ) {
-            Text("Hesabınız yok mu? Kaydolun")
+            Text("Hesabın yok mu? Kayıt ol")
+        }
+        
+        // Hata mesajı gösterimi
+        if (authState is AuthViewModel.AuthState.Error) {
+            Text(
+                text = (authState as AuthViewModel.AuthState.Error).message,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 16.dp)
+            )
         }
     }
 } 
